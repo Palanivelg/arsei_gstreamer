@@ -1,5 +1,4 @@
 # arsei_gstreamer
-# arsei
 
 AR SEI applications using the modified gstreamer library
 
