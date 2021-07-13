@@ -1,0 +1,46 @@
+diff --git a/api/include/mfxstructures.h b/api/include/mfxstructures.h
+index d4b8b96b..aef6c8e2 100644
+--- a/api/include/mfxstructures.h
++++ b/api/include/mfxstructures.h
+@@ -1408,6 +1408,41 @@ typedef struct {
+ } mfxExtPictureTimingSEI;
+ MFX_PACK_END()
+ 
++MFX_PACK_BEGIN_USUAL_STRUCT()
++typedef struct 
++{
++  mfxU32 Top;
++  mfxU32 Left;
++  mfxU32 Width;
++  mfxU32 Height;
++  mfxU32 Conf;
++  mfxU32 ObjId;
++  mfxU32 LabelId;
++} mfxExtAnnotatedObjects;
++MFX_PACK_END()
++
++MFX_PACK_BEGIN_USUAL_STRUCT()
++typedef struct 
++{
++  mfxU8  ValidLabel;
++  mfxI8  Label[250];
++} mfxExtAnnotatedLabels;
++MFX_PACK_END()
++
++MFX_PACK_BEGIN_USUAL_STRUCT()
++typedef struct
++{
++  mfxU32 NumObjs;
++  mfxU32 NumLabels;
++  mfxU32 NumObjUpdates;  
++  mfxU32 NumLabelUpdates;
++  mfxU8  LabelPresentFlag;
++  mfxU8  ConfPresentFlag;
++  mfxExtAnnotatedObjects Objs[50];
++  mfxExtAnnotatedLabels  Labels[50];
++} mfxExtAnnotatedRegionsSEI;
++MFX_PACK_END()
++
+ MFX_PACK_BEGIN_USUAL_STRUCT()
+ typedef struct {
+     mfxExtBuffer    Header;

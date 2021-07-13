@@ -1,0 +1,1469 @@
+diff --git a/gst-libs/gst/codecparsers/gsth264parser.c b/gst-libs/gst/codecparsers/gsth264parser.c
+index 68aa25068..c8a6bb6ff 100644
+--- a/gst-libs/gst/codecparsers/gsth264parser.c
++++ b/gst-libs/gst/codecparsers/gsth264parser.c
+@@ -1234,6 +1234,124 @@ error:
+   return GST_H264_PARSER_ERROR;
+ }
+ 
++static GstH264ParserResult
++gst_h264_parser_parse_annotated_regions (GstH264NalParser * parser,
++    GstH264AnnotatedRegions * ar, NalReader * nr)
++{
++  guint i, j;
++  guint val;
++  guint8 reserved_zero_bit;
++  guint8 num_bits_left;
++  
++  GST_DEBUG ("parsing \"Annotated regions\"");
++
++  READ_UINT8 (nr, ar->cancel_flag, 1);
++  if (!ar->cancel_flag)
++  {
++    READ_UINT8 (nr, ar->not_optimized_for_viewing_flag, 1);
++    READ_UINT8 (nr, ar->true_motion_flag, 1);
++    READ_UINT8 (nr, ar->occluded_object_flag, 1);
++    READ_UINT8 (nr, ar->partial_object_flag_present_flag, 1);
++    READ_UINT8 (nr, ar->object_label_present_flag, 1);
++    READ_UINT8 (nr, ar->object_conf_info_present_flag, 1);
++    if (ar->object_conf_info_present_flag)
++    {
++      READ_UINT32 (nr, ar->object_conf_length, 4);
++      ar->object_conf_length += 1; 
++    }
++    if (ar->object_label_present_flag)
++    {
++      READ_UINT8(nr, ar->object_label_lang_present_flag, 1);
++    
++      if (ar->object_label_lang_present_flag)
++      {
++        num_bits_left = nr->bits_in_cache;
++        
++        //Byte alignment
++        for (i = 0; i < num_bits_left; i++)
++          READ_UINT8(nr, reserved_zero_bit, 1);
++        
++        j = 0;
++        do
++        {
++          READ_UINT32(nr, val, 8);
++          if (val)
++          {
++            ar->object_label_lang[j++] = (gchar)val;
++          }
++        } while (val != '\0');
++      }
++      READ_UE (nr, ar->num_label_updates);
++      for (i = 0; i < ar->num_label_updates; i++)
++      {
++        READ_UE (nr, ar->labels[i].label_idx);
++        READ_UINT8(nr, ar->labels[i].label_cancel_flag, 1);
++        if (!ar->labels[i].label_cancel_flag)
++        {
++          num_bits_left = nr->bits_in_cache;
++          //Byte alignment
++          for (j = 0; j < num_bits_left; j++)
++            READ_UINT8(nr, reserved_zero_bit, 1);
++    
++          j = 0;
++          do
++          {
++            READ_UINT32(nr, val, 8);
++            if (val)
++            {
++              ar->labels[i].label[j++] = (gchar) val;
++            }
++          } while (val != '\0');
++        }
++      }
++    }
++    
++    READ_UE (nr, ar->num_object_updates);
++    for (i = 0; i < ar->num_object_updates; i++)
++    {
++      READ_UE (nr, ar->objects[i].object_idx);
++      READ_UINT8 (nr, ar->objects[i].object_cancel_flag, 1);
++      if (!ar->objects[i].object_cancel_flag)
++      {
++        if (ar->object_label_present_flag)
++        {
++          READ_UINT8 (nr, ar->objects[i].object_label_update_flag, 1);
++          if (ar->objects[i].object_label_update_flag)
++          {
++            READ_UE (nr, ar->objects[i].object_label_idx);  
++          }     
++        }
++        READ_UINT8 (nr, ar->objects[i].bounding_box_update_flag, 1);
++        if (ar->objects[i].bounding_box_update_flag)
++        {
++          READ_UINT8 (nr, ar->objects[i].bounding_box_cancel_flag, 1);
++          if (!ar->objects[i].bounding_box_cancel_flag)
++          {
++            READ_UINT16 (nr, ar->objects[i].bounding_box_top,    16);
++            READ_UINT16 (nr, ar->objects[i].bounding_box_left,   16);
++            READ_UINT16 (nr, ar->objects[i].bounding_box_width,  16);
++            READ_UINT16 (nr, ar->objects[i].bounding_box_height, 16);
++            if (ar->partial_object_flag_present_flag)
++            {
++              READ_UINT8 (nr, ar->objects[i].partial_object_flag, 1);
++            }
++            if (ar->object_conf_info_present_flag)
++            {
++              READ_UINT8 (nr, ar->objects[i].object_confidence, ar->object_conf_length);
++            }
++        }
++       }
++      }
++    }
++  }
++  return GST_H264_PARSER_OK;
++
++error:
++  GST_WARNING ("error parsing \"Annotated regions\"");
++  return GST_H264_PARSER_ERROR;
++}
++
++
+ static GstH264ParserResult
+ gst_h264_parser_parse_sei_unhandled_payload (GstH264NalParser * parser,
+     GstH264SEIUnhandledPayload * payload, NalReader * nr, guint payload_type,
+@@ -1328,6 +1446,10 @@ gst_h264_parser_parse_sei_message (GstH264NalParser * nalparser,
+       res = gst_h264_parser_parse_content_light_level_info (nalparser,
+           &sei->payload.content_light_level, nr);
+       break;
++    case GST_H264_SEI_ANNOTATED_REGIONS:
++      res = gst_h264_parser_parse_annotated_regions(nalparser,
++            &sei->payload.annotated_regions, nr);
++      break;      
+     default:
+       res = gst_h264_parser_parse_sei_unhandled_payload (nalparser,
+           &sei->payload.unhandled_payload, nr, sei->payloadType,
+@@ -2928,6 +3050,107 @@ error:
+   return FALSE;
+ }
+ 
++static gboolean
++gst_h264_write_sei_annotated_regions(NalWriter * nw,
++    GstH264AnnotatedRegions * ar)
++{
++	guint i, alignment_bits, val, j;
++	gchar lang[8] = {'E','N','G','L','I','S','H','\0'};
++  GST_DEBUG ("writing \"Annotated regions\"");
++  WRITE_UINT8 (nw, ar->cancel_flag, 1);
++  if (!ar->cancel_flag)
++  {
++  	/* not_optimized_for_viewing_flag */
++    WRITE_UINT8 (nw, 0, 1);  
++  	/* true_motion_flag */    
++    WRITE_UINT8 (nw, 0, 1);
++   	/* occluded_object_flag */
++    WRITE_UINT8 (nw, 0, 1);
++  	/* partial_object_flag_present_flag */    
++    WRITE_UINT8 (nw, 0, 1);
++  	/* object_label_present_flag */    
++    WRITE_UINT8 (nw, ar->object_label_present_flag, 1);
++    /* object_conf_info_present_flag */
++    WRITE_UINT8 (nw, 0, 1);
++    
++    if (ar->object_label_present_flag)
++    {
++      /* object_label_lang_present_flag */
++    	WRITE_UINT8(nw, 1, 1);
++    	alignment_bits = 0;
++    	if ((nw->bw.bit_size % 8) != 0) {
++				alignment_bits = (8 - (nw->bw.bit_size % 8));
++			}
++			/* reserved zero bits */
++			for (i = 0; i < alignment_bits; i++)
++				WRITE_UINT8 (nw, 0, 1);
++			/* label language */
++			for (i = 0; i < 8; i++)
++				WRITE_UINT32 (nw, lang[i], 8);
++			/* label updates */
++			WRITE_UE (nw, ar->num_label_updates);
++			//WRITE_UE (nw, ar->num_labels);
++			/* label index */
++			//for (i = 0; i < ar->num_label_updates; i++)
++			for (i = 0; i < ar->num_labels; i++)
++			{
++				/* label index */
++				WRITE_UE (nw, (ar->num_labels - ar->num_label_updates + i));
++				//WRITE_UE (nw, i);
++				/* label cancel flag */
++      	WRITE_UINT8 (nw, 0, 1);
++    		alignment_bits = 0;
++    		if ((nw->bw.bit_size % 8) != 0) {
++					alignment_bits = (8 - (nw->bw.bit_size % 8));
++				}
++				/* reserved zero bits */
++				for (j = 0; j < alignment_bits; j++)
++					WRITE_UINT8 (nw, 0, 1);
++				/* label */
++				j = 0;
++				do 
++				{
++				  val = ar->labels[i].label[j++];
++					WRITE_UINT32 (nw, val, 8);
++				} while (val != 0);
++			}
++    }
++    
++    /* Object updates */
++    WRITE_UE (nw, ar->num_object_updates);
++    for (i = 0; i < ar->num_object_updates; i++)
++    {
++      WRITE_UE (nw, ar->objects[i].object_idx);
++      WRITE_UINT8 (nw, ar->objects[i].object_cancel_flag, 1);
++      if (!ar->objects[i].object_cancel_flag)
++      {
++      	if (ar->object_label_present_flag)
++      	{
++      		/* object_label_update_flag */
++      		WRITE_UINT8 (nw, 1, 1);
++      		WRITE_UE (nw, ar->objects[i].object_label_idx);
++      	}
++        WRITE_UINT8 (nw, ar->objects[i].bounding_box_update_flag, 1);
++        if (ar->objects[i].bounding_box_update_flag)
++        {
++          /* bounding_box_cancel_flag */
++          WRITE_UINT8 (nw, ar->objects[i].bounding_box_cancel_flag , 1);
++          if (!ar->objects[i].bounding_box_cancel_flag)
++          {
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_top,    16);
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_left,   16);
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_width,  16);
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_height, 16);
++          }
++        }
++       }
++     }
++  }
++  return TRUE;
++error:
++		return FALSE;
++}
++
+ static GstMemory *
+ gst_h264_create_sei_memory_internal (guint8 nal_prefix_size,
+     gboolean packetized, GArray * messages)
+@@ -3126,6 +3349,21 @@ gst_h264_create_sei_memory_internal (guint8 nal_prefix_size,
+         }
+         break;
+       }
++      case GST_H264_SEI_ANNOTATED_REGIONS: {
++      	NalWriter nw_arsei;
++      	nal_writer_init (&nw_arsei, nal_prefix_size, packetized);
++      	/* Temporary encode to get the number of bits */
++				gst_h264_write_sei_annotated_regions(&nw_arsei,
++                &msg->payload.annotated_regions);
++        payload_size_in_bits = nw_arsei.bw.bit_size;
++        payload_size_data = payload_size_in_bits >> 3;
++        if ((payload_size_in_bits & 0x7) != 0) {
++          GST_INFO ("Bits for AR SEI is not byte aligned");
++          payload_size_data++;
++          need_align = TRUE;
++        }        
++      	break;
++      }      
+       default:
+         break;
+     }
+@@ -3194,6 +3432,15 @@ gst_h264_create_sei_memory_internal (guint8 nal_prefix_size,
+         }
+         have_written_data = TRUE;
+         break;
++     case GST_H264_SEI_ANNOTATED_REGIONS:
++        GST_DEBUG ("Writing \"Annotated Regions\" done");
++        if (!gst_h264_write_sei_annotated_regions (&nw,
++                &msg->payload.annotated_regions)) {
++          GST_WARNING ("Failed to write \"Annotated Regions\"");
++          goto error;
++        }
++        have_written_data = TRUE;
++        break;        
+       default:
+         break;
+     }
+diff --git a/gst-libs/gst/codecparsers/gsth264parser.h b/gst-libs/gst/codecparsers/gsth264parser.h
+index d2f954232..0c49d21ef 100644
+--- a/gst-libs/gst/codecparsers/gsth264parser.h
++++ b/gst-libs/gst/codecparsers/gsth264parser.h
+@@ -263,6 +263,7 @@ typedef enum
+   GST_H264_SEI_FRAME_PACKING = 45,
+   GST_H264_SEI_MASTERING_DISPLAY_COLOUR_VOLUME = 137,
+   GST_H264_SEI_CONTENT_LIGHT_LEVEL = 144,
++  GST_H264_SEI_ANNOTATED_REGIONS =202,  
+       /* and more...  */
+ 
+   /* Unhandled SEI type */
+@@ -364,6 +365,9 @@ typedef struct _GstH264FramePacking           GstH264FramePacking;
+ typedef struct _GstH264MasteringDisplayColourVolume GstH264MasteringDisplayColourVolume;
+ typedef struct _GstH264ContentLightLevel        GstH264ContentLightLevel;
+ typedef struct _GstH264SEIUnhandledPayload    GstH264SEIUnhandledPayload;
++typedef struct _GstH264AnnotatedRegionsObjects  GstH264AnnotatedRegionsObjects;
++typedef struct _GstH264AnnotatedRegionsLabels   GstH264AnnotatedRegionsLabels;
++typedef struct _GstH264AnnotatedRegions         GstH264AnnotatedRegions;
+ typedef struct _GstH264SEIMessage             GstH264SEIMessage;
+ 
+ /**
+@@ -1166,6 +1170,53 @@ struct _GstH264ContentLightLevel
+   guint16 max_pic_average_light_level;
+ };
+ 
++/**
++ * GstH264AnnotatedRegions:
++ * Annotated regions spec
++ *
++ * D.2.31
++ *
++ * Since: 1.18
++ */
++struct _GstH264AnnotatedRegionsObjects {
++	guint   object_idx;
++	guint   object_label_idx;
++	guint   object_confidence;
++	guint8  object_cancel_flag;
++	guint8  object_label_update_flag;
++	guint8  bounding_box_cancel_flag;
++	guint8  bounding_box_update_flag;
++	guint8  partial_object_flag;
++	guint16 bounding_box_top;
++	guint16 bounding_box_left;
++	guint16 bounding_box_width;
++	guint16 bounding_box_height;	 
++};
++
++struct _GstH264AnnotatedRegionsLabels {
++	guint label_idx;
++	guint8 label_cancel_flag;
++	gchar  label[250];
++};
++
++struct _GstH264AnnotatedRegions {
++  guint8 cancel_flag;
++	guint8 not_optimized_for_viewing_flag;
++	guint8 true_motion_flag;
++	guint8 occluded_object_flag;
++	guint8 partial_object_flag_present_flag;
++  guint8 object_label_present_flag;
++	guint8 object_conf_info_present_flag;
++	guint8 object_label_lang_present_flag;
++	gchar object_label_lang[250];
++	guint object_conf_length;
++	guint num_label_updates;
++	guint num_labels;	
++	guint num_object_updates;
++	GstH264AnnotatedRegionsLabels labels[250];
++	GstH264AnnotatedRegionsObjects objects[250]; 
++};
++
+ /**
+  * GstH264SEIUnhandledPayload:
+  * @payloadType: Payload type
+@@ -1198,6 +1249,7 @@ struct _GstH264SEIMessage
+     GstH264FramePacking frame_packing;
+     GstH264MasteringDisplayColourVolume mastering_display_colour_volume;
+     GstH264ContentLightLevel content_light_level;
++    GstH264AnnotatedRegions annotated_regions;    
+     GstH264SEIUnhandledPayload unhandled_payload;
+     /* ... could implement more */
+   } payload;
+diff --git a/gst-libs/gst/codecparsers/gsth265parser.c b/gst-libs/gst/codecparsers/gsth265parser.c
+index 99cb23228..6740ac913 100644
+--- a/gst-libs/gst/codecparsers/gsth265parser.c
++++ b/gst-libs/gst/codecparsers/gsth265parser.c
+@@ -1340,6 +1340,124 @@ error:
+   return GST_H265_PARSER_ERROR;
+ }
+ 
++static GstH265ParserResult
++gst_h265_parser_parse_annotated_regions (GstH265Parser * parser,
++    GstH265AnnotatedRegions * ar, NalReader * nr)
++{
++  guint i, j;
++  guint val;
++  guint8 reserved_zero_bit;
++  guint8 num_bits_left;
++  
++  GST_DEBUG ("parsing \"Annotated regions\"");
++
++  READ_UINT8 (nr, ar->cancel_flag, 1);
++  if (!ar->cancel_flag)
++  {
++    READ_UINT8 (nr, ar->not_optimized_for_viewing_flag, 1);
++    READ_UINT8 (nr, ar->true_motion_flag, 1);
++    READ_UINT8 (nr, ar->occluded_object_flag, 1);
++    READ_UINT8 (nr, ar->partial_object_flag_present_flag, 1);
++    READ_UINT8 (nr, ar->object_label_present_flag, 1);
++    READ_UINT8 (nr, ar->object_conf_info_present_flag, 1);
++    if (ar->object_conf_info_present_flag)
++    {
++      READ_UINT32 (nr, ar->object_conf_length, 4);
++      ar->object_conf_length += 1; 
++    }
++    if (ar->object_label_present_flag)
++    {
++      READ_UINT8(nr, ar->object_label_lang_present_flag, 1);
++    
++      if (ar->object_label_lang_present_flag)
++      {
++        num_bits_left = nr->bits_in_cache;
++        
++        //Byte alignment
++        for (i = 0; i < num_bits_left; i++)
++          READ_UINT8(nr, reserved_zero_bit, 1);
++        
++        j = 0;
++        do
++        {
++          READ_UINT32(nr, val, 8);
++          if (val)
++          {
++            ar->object_label_lang[j++] = (gchar)val;
++          }
++        } while (val != '\0');
++      }
++      READ_UE (nr, ar->num_label_updates);
++      for (i = 0; i < ar->num_label_updates; i++)
++      {
++        READ_UE (nr, ar->labels[i].label_idx);
++        READ_UINT8(nr, ar->labels[i].label_cancel_flag, 1);
++        if (!ar->labels[i].label_cancel_flag)
++        {
++          num_bits_left = nr->bits_in_cache;
++          //Byte alignment
++          for (j = 0; j < num_bits_left; j++)
++            READ_UINT8(nr, reserved_zero_bit, 1);
++    
++          j = 0;
++          do
++          {
++            READ_UINT32(nr, val, 8);
++            if (val)
++            {
++              ar->labels[i].label[j++] = (gchar) val;
++            }
++          } while (val != '\0');
++        }
++      }
++    }
++    
++    READ_UE (nr, ar->num_object_updates);
++    for (i = 0; i < ar->num_object_updates; i++)
++    {
++      READ_UE (nr, ar->objects[i].object_idx);
++      READ_UINT8 (nr, ar->objects[i].object_cancel_flag, 1);
++      if (!ar->objects[i].object_cancel_flag)
++      {
++        if (ar->object_label_present_flag)
++        {
++          READ_UINT8 (nr, ar->objects[i].object_label_update_flag, 1);
++          if (ar->objects[i].object_label_update_flag)
++          {
++            READ_UE (nr, ar->objects[i].object_label_idx);  
++          }     
++        }
++        READ_UINT8 (nr, ar->objects[i].bounding_box_update_flag, 1);
++        if (ar->objects[i].bounding_box_update_flag)
++        {
++          READ_UINT8 (nr, ar->objects[i].bounding_box_cancel_flag, 1);
++          if (!ar->objects[i].bounding_box_cancel_flag)
++          {
++            READ_UINT16 (nr, ar->objects[i].bounding_box_top,    16);
++            READ_UINT16 (nr, ar->objects[i].bounding_box_left,   16);
++            READ_UINT16 (nr, ar->objects[i].bounding_box_width,  16);
++            READ_UINT16 (nr, ar->objects[i].bounding_box_height, 16);
++            if (ar->partial_object_flag_present_flag)
++            {
++              READ_UINT8 (nr, ar->objects[i].partial_object_flag, 1);
++            }
++            if (ar->object_conf_info_present_flag)
++            {
++              READ_UINT8 (nr, ar->objects[i].object_confidence, ar->object_conf_length);
++            }
++        }
++       }
++      }
++    }
++  }
++  return GST_H265_PARSER_OK;
++
++error:
++  GST_WARNING ("error parsing \"Annotated regions\"");
++  return GST_H265_PARSER_ERROR;
++}
++
++
+ /******** API *************/
+ 
+ /**
+@@ -2803,6 +2921,11 @@ gst_h265_parser_parse_sei_message (GstH265Parser * parser,
+         res = gst_h265_parser_parse_content_light_level_info (parser,
+             &sei->payload.content_light_level, nr);
+         break;
++        
++      case GST_H265_SEI_ANNOTATED_REGIONS:
++        res = gst_h265_parser_parse_annotated_regions(parser,
++            &sei->payload.annotated_regions, nr);
++        break;        
+       default:
+         /* Just consume payloadSize bytes, which does not account for
+            emulation prevention bytes */
+@@ -3849,6 +3972,107 @@ error:
+   return FALSE;
+ }
+ 
++static gboolean
++gst_h265_write_sei_annotated_regions(NalWriter * nw,
++    GstH265AnnotatedRegions * ar)
++{
++	guint i, alignment_bits, val, j;
++	gchar lang[8] = {'E','N','G','L','I','S','H','\0'};
++  GST_DEBUG ("writing \"Annotated regions\"");
++  WRITE_UINT8 (nw, ar->cancel_flag, 1);
++  if (!ar->cancel_flag)
++  {
++  	/* not_optimized_for_viewing_flag */
++    WRITE_UINT8 (nw, 0, 1);  
++  	/* true_motion_flag */    
++    WRITE_UINT8 (nw, 0, 1);
++   	/* occluded_object_flag */
++    WRITE_UINT8 (nw, 0, 1);
++  	/* partial_object_flag_present_flag */    
++    WRITE_UINT8 (nw, 0, 1);
++  	/* object_label_present_flag */    
++    WRITE_UINT8 (nw, ar->object_label_present_flag, 1);
++    /* object_conf_info_present_flag */
++    WRITE_UINT8 (nw, 0, 1);
++    
++    if (ar->object_label_present_flag)
++    {
++      /* object_label_lang_present_flag */
++    	WRITE_UINT8(nw, 1, 1);
++    	alignment_bits = 0;
++    	if ((nw->bw.bit_size % 8) != 0) {
++				alignment_bits = (8 - (nw->bw.bit_size % 8));
++			}
++			/* reserved zero bits */
++			for (i = 0; i < alignment_bits; i++)
++				WRITE_UINT8 (nw, 0, 1);
++			/* label language */
++			for (i = 0; i < 8; i++)
++				WRITE_UINT32 (nw, lang[i], 8);
++			/* label updates */
++			WRITE_UE (nw, ar->num_label_updates);
++			//WRITE_UE (nw, ar->num_labels);
++			/* label index */
++			//for (i = 0; i < ar->num_label_updates; i++)
++			for (i = 0; i < ar->num_labels; i++)
++			{
++				/* label index */
++				WRITE_UE (nw, (ar->num_labels - ar->num_label_updates + i));
++				//WRITE_UE (nw, i);
++				/* label cancel flag */
++      	WRITE_UINT8 (nw, 0, 1);
++    		alignment_bits = 0;
++    		if ((nw->bw.bit_size % 8) != 0) {
++					alignment_bits = (8 - (nw->bw.bit_size % 8));
++				}
++				/* reserved zero bits */
++				for (j = 0; j < alignment_bits; j++)
++					WRITE_UINT8 (nw, 0, 1);
++				/* label */
++				j = 0;
++				do 
++				{
++				  val = ar->labels[i].label[j++];
++					WRITE_UINT32 (nw, val, 8);
++				} while (val != 0);
++			}
++    }
++    
++    /* Object updates */
++    WRITE_UE (nw, ar->num_object_updates);
++    for (i = 0; i < ar->num_object_updates; i++)
++    {
++      WRITE_UE (nw, ar->objects[i].object_idx);
++      WRITE_UINT8 (nw, ar->objects[i].object_cancel_flag, 1);
++      if (!ar->objects[i].object_cancel_flag)
++      {
++      	if (ar->object_label_present_flag)
++      	{
++      		/* object_label_update_flag */
++      		WRITE_UINT8 (nw, 1, 1);
++      		WRITE_UE (nw, ar->objects[i].object_label_idx);
++      	}
++        WRITE_UINT8 (nw, ar->objects[i].bounding_box_update_flag, 1);
++        if (ar->objects[i].bounding_box_update_flag)
++        {
++          /* bounding_box_cancel_flag */
++          WRITE_UINT8 (nw, ar->objects[i].bounding_box_cancel_flag , 1);
++          if (!ar->objects[i].bounding_box_cancel_flag)
++          {
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_top,    16);
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_left,   16);
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_width,  16);
++            WRITE_UINT16 (nw, ar->objects[i].bounding_box_height, 16);
++          }
++        }
++       }
++     }
++  }
++  return TRUE;
++error:
++		return FALSE;
++}    
++
+ static GstMemory *
+ gst_h265_create_sei_memory_internal (guint8 layer_id, guint8 temporal_id_plus1,
+     guint nal_prefix_size, gboolean packetized, GArray * messages)
+@@ -3975,6 +4199,21 @@ gst_h265_create_sei_memory_internal (guint8 layer_id, guint8 temporal_id_plus1,
+          */
+         payload_size_data = 4;
+         break;
++      case GST_H265_SEI_ANNOTATED_REGIONS: {
++      	NalWriter nw_arsei;
++      	nal_writer_init (&nw_arsei, nal_prefix_size, packetized);
++      	/* Temporary encode to get the number of bits */
++				gst_h265_write_sei_annotated_regions(&nw_arsei,
++                &msg->payload.annotated_regions);
++        payload_size_in_bits = nw_arsei.bw.bit_size;
++        payload_size_data = payload_size_in_bits >> 3;
++        if ((payload_size_in_bits & 0x7) != 0) {
++          GST_INFO ("Bits for AR SEI is not byte aligned");
++          payload_size_data++;
++          need_align = TRUE;
++        }        
++      	break;
++      }
+       default:
+         break;
+     }
+@@ -4034,6 +4273,15 @@ gst_h265_create_sei_memory_internal (guint8 layer_id, guint8 temporal_id_plus1,
+         }
+         have_written_data = TRUE;
+         break;
++     case GST_H265_SEI_ANNOTATED_REGIONS:
++        GST_DEBUG ("Writing \"Annotated Regions\" done");
++        if (!gst_h265_write_sei_annotated_regions (&nw,
++                &msg->payload.annotated_regions)) {
++          GST_WARNING ("Failed to write \"Annotated Regions\"");
++          goto error;
++        }
++        have_written_data = TRUE;
++        break;
+       default:
+         break;
+     }
+diff --git a/gst-libs/gst/codecparsers/gsth265parser.h b/gst-libs/gst/codecparsers/gsth265parser.h
+index 0d80c19b3..e210306ba 100644
+--- a/gst-libs/gst/codecparsers/gsth265parser.h
++++ b/gst-libs/gst/codecparsers/gsth265parser.h
+@@ -357,6 +357,7 @@ typedef enum
+   GST_H265_SEI_TIME_CODE = 136,
+   GST_H265_SEI_MASTERING_DISPLAY_COLOUR_VOLUME = 137,
+   GST_H265_SEI_CONTENT_LIGHT_LEVEL = 144,
++  GST_H265_SEI_ANNOTATED_REGIONS =202,
+       /* and more...  */
+ } GstH265SEIPayloadType;
+ 
+@@ -452,6 +453,9 @@ typedef struct _GstH265TimeCode                 GstH265TimeCode;
+ typedef struct _GstH265MasteringDisplayColourVolume GstH265MasteringDisplayColourVolume;
+ typedef struct _GstH265ContentLightLevel        GstH265ContentLightLevel;
+ typedef struct _GstH265SEIMessage               GstH265SEIMessage;
++typedef struct _GstH265AnnotatedRegionsObjects  GstH265AnnotatedRegionsObjects;
++typedef struct _GstH265AnnotatedRegionsLabels   GstH265AnnotatedRegionsLabels;
++typedef struct _GstH265AnnotatedRegions         GstH265AnnotatedRegions;
+ 
+ /**
+  * GstH265NalUnit:
+@@ -1595,6 +1599,45 @@ struct _GstH265ContentLightLevel
+   guint16 max_pic_average_light_level;
+ };
+ 
++struct _GstH265AnnotatedRegionsObjects {
++	guint   object_idx;
++	guint   object_label_idx;
++	guint   object_confidence;
++	guint8  object_cancel_flag;
++	guint8  object_label_update_flag;
++	guint8  bounding_box_cancel_flag;
++	guint8  bounding_box_update_flag;
++	guint8  partial_object_flag;
++	guint16 bounding_box_top;
++	guint16 bounding_box_left;
++	guint16 bounding_box_width;
++	guint16 bounding_box_height;	 
++};
++
++struct _GstH265AnnotatedRegionsLabels {
++	guint label_idx;
++	guint8 label_cancel_flag;
++	gchar  label[250];
++};
++
++struct _GstH265AnnotatedRegions {
++  guint8 cancel_flag;
++	guint8 not_optimized_for_viewing_flag;
++	guint8 true_motion_flag;
++	guint8 occluded_object_flag;
++	guint8 partial_object_flag_present_flag;
++  guint8 object_label_present_flag;
++	guint8 object_conf_info_present_flag;
++	guint8 object_label_lang_present_flag;
++	gchar object_label_lang[250];
++	guint object_conf_length;
++	guint num_label_updates;
++	guint num_labels;
++	guint num_object_updates;
++	GstH265AnnotatedRegionsLabels labels[250];
++	GstH265AnnotatedRegionsObjects objects[250]; 
++};
++
+ struct _GstH265SEIMessage
+ {
+   GstH265SEIPayloadType payloadType;
+@@ -1607,6 +1650,7 @@ struct _GstH265SEIMessage
+     GstH265TimeCode time_code;
+     GstH265MasteringDisplayColourVolume mastering_display_colour_volume;
+     GstH265ContentLightLevel content_light_level;
++    GstH265AnnotatedRegions annotated_regions;
+     /* ... could implement more */
+   } payload;
+ };
+diff --git a/gst/videoparsers/gsth264parse.c b/gst/videoparsers/gsth264parse.c
+index ef265d3d0..58f409b12 100644
+--- a/gst/videoparsers/gsth264parse.c
++++ b/gst/videoparsers/gsth264parse.c
+@@ -908,6 +908,77 @@ gst_h264_parse_process_sei (GstH264Parse * h264parse, GstH264NalUnit * nalu)
+ 
+         break;
+       }
++      case GST_H264_SEI_ANNOTATED_REGIONS:
++      {
++        guint j,idx;
++        GstAnnotatedRegions *dst_ar = &h264parse->annotated_regions_info;
++        const GstH264AnnotatedRegions *const src_ar = &sei.payload.annotated_regions;
++        //General flags
++        dst_ar->object_label_present_flag = src_ar->object_label_present_flag;
++        dst_ar->object_conf_info_present_flag = src_ar->object_conf_info_present_flag;
++
++        //Label updates
++        if (dst_ar->object_label_present_flag) {
++          for (j = 0; j < src_ar->num_label_updates; j++) {
++            idx = src_ar->labels[j].label_idx;
++            if (src_ar->labels[j].label_cancel_flag) {
++              strcpy(dst_ar->labels[idx].label, "Unknown");
++              dst_ar->labels[idx].label_valid = 0;
++              dst_ar->num_valid_labels -= 1;
++            }
++            else {
++              strcpy(dst_ar->labels[idx].label, src_ar->labels[j].label);
++              dst_ar->labels[idx].label_valid = 1;
++              dst_ar->num_valid_labels += 1;
++            }
++          }
++        }
++        //Object updates
++        for (j = 0; j < src_ar->num_object_updates;j++) {
++          idx = src_ar->objects[j].object_idx;
++          //Cancelled object
++          if (src_ar->objects[j].object_cancel_flag) {
++            dst_ar->objects[idx].object_valid = 0;
++            dst_ar->num_valid_objects -= 1;
++          }
++          //Valid object
++          else {
++            //Update the bounding box
++            if (src_ar->objects[j].bounding_box_update_flag) {
++              //Valid bounding box
++              if (!src_ar->objects[j].bounding_box_cancel_flag) {
++                //New object (or) existing one
++                if (!dst_ar->objects[idx].object_valid) {
++                  dst_ar->objects[idx].object_valid = 1;
++                  dst_ar->num_valid_objects += 1;
++                }
++                dst_ar->objects[idx].top = (guint)src_ar->objects[j].bounding_box_top;
++                dst_ar->objects[idx].left = (guint)src_ar->objects[j].bounding_box_left;
++                dst_ar->objects[idx].width = (guint)src_ar->objects[j].bounding_box_width;
++                dst_ar->objects[idx].height = (guint)src_ar->objects[j].bounding_box_height;
++                //Object label related
++                if (dst_ar->object_label_present_flag && 
++                  src_ar->objects[j].object_label_update_flag) {
++                  dst_ar->objects[idx].label_idx = src_ar->objects[j].object_label_idx;
++                }
++                //Object confidence related
++                if (dst_ar->object_conf_info_present_flag) {
++                  dst_ar->objects[idx].confidence = src_ar->objects[j].object_confidence;
++                }
++              }
++              //Cancelled bounding box
++              else {
++                  dst_ar->objects[idx].top = 0;
++                  dst_ar->objects[idx].left = 0;
++                  dst_ar->objects[idx].width = 0;
++                  dst_ar->objects[idx].height = 0;
++              }
++            }
++          }
++        }
++
++       break;
++      }      
+       default:{
+         gint payload_type = sei.payloadType;
+ 
+@@ -3323,6 +3394,25 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
+     if (h264parse->sei_pic_struct == GST_H264_SEI_PIC_STRUCT_TOP_FIELD)
+       GST_BUFFER_FLAG_SET (parse_buffer, GST_VIDEO_BUFFER_FLAG_TFF);
+   }
++  
++  /* Add  annotated region sei as ROI meta to the buffer */
++  guint num_objects = h264parse->annotated_regions_info.num_valid_objects;
++  if (num_objects > 0)
++  {
++    GstVideoRegionOfInterestMeta *dmeta;
++    guint i;
++    for (i = 0; i < num_objects; i++)
++    { 
++      guint label_index = h264parse->annotated_regions_info.objects[i].label_idx;
++      dmeta = gst_buffer_add_video_region_of_interest_meta_id (parse_buffer, 
++        g_quark_from_string(h264parse->annotated_regions_info.labels[label_index].label),
++        h264parse->annotated_regions_info.objects[i].left, h264parse->annotated_regions_info.objects[i].top,
++        h264parse->annotated_regions_info.objects[i].width, h264parse->annotated_regions_info.objects[i].height);
++
++      dmeta->id = i;
++      dmeta->parent_id = i;    
++    }
++  }  
+ 
+   gst_video_push_user_data ((GstElement *) h264parse, &h264parse->user_data,
+       parse_buffer);
+diff --git a/gst/videoparsers/gsth264parse.h b/gst/videoparsers/gsth264parse.h
+index c526defdd..d1140b5b6 100644
+--- a/gst/videoparsers/gsth264parse.h
++++ b/gst/videoparsers/gsth264parse.h
+@@ -50,6 +50,34 @@ GType gst_h264_parse_get_type (void);
+ 
+ typedef struct _GstH264Parse GstH264Parse;
+ typedef struct _GstH264ParseClass GstH264ParseClass;
++typedef struct _GstAnnotatedObjects
++{
++  guint8 object_valid;
++  guint top;
++  guint left;
++  guint width;
++  guint height;
++  guint confidence;
++  guint label_idx;
++} GstAnnotatedObjects;
++
++typedef struct _GstAnnotatedLabels
++{
++  guint8 label_valid;
++  gint8  label[250];
++}  GstAnnotatedLabels;
++
++typedef struct _GstAnnotatedRegions
++{
++  guint8 occluded_object_flag;
++  guint8 partial_object_flag_present_flag;
++  guint8 object_label_present_flag;
++  guint8 object_conf_info_present_flag;
++  guint num_valid_objects;
++  guint num_valid_labels;
++  GstAnnotatedObjects objects[50];
++  GstAnnotatedLabels  labels[50];
++} GstAnnotatedRegions;
+ 
+ struct _GstH264Parse
+ {
+@@ -157,6 +185,8 @@ struct _GstH264Parse
+ 
+   GstVideoContentLightLevel content_light_level;
+   guint content_light_level_state;
++  
++  GstAnnotatedRegions annotated_regions_info;  
+ 
+   /* For forward predicted trickmode */
+   gboolean discard_bidirectional;
+diff --git a/gst/videoparsers/gsth265parse.c b/gst/videoparsers/gsth265parse.c
+index a052b1f0c..36dbdfa47 100644
+--- a/gst/videoparsers/gsth265parse.c
++++ b/gst/videoparsers/gsth265parse.c
+@@ -669,6 +669,79 @@ gst_h265_parse_process_sei (GstH265Parse * h265parse, GstH265NalUnit * nalu)
+ 
+         break;
+       }
++      case GST_H265_SEI_ANNOTATED_REGIONS:
++      {
++        guint j,idx;
++        GstAnnotatedRegions *dst_ar = &h265parse->annotated_regions_info;
++        const GstH265AnnotatedRegions *const src_ar = &sei.payload.annotated_regions;
++        //General flags
++        dst_ar->object_label_present_flag = src_ar->object_label_present_flag;
++        dst_ar->object_conf_info_present_flag = src_ar->object_conf_info_present_flag;
++
++        //Label updates
++        if (dst_ar->object_label_present_flag) {
++          for (j = 0; j < src_ar->num_label_updates; j++) {
++            idx = src_ar->labels[j].label_idx;
++            if (src_ar->labels[j].label_cancel_flag) {
++              strcpy(dst_ar->labels[idx].label, "Unknown");
++              dst_ar->labels[idx].label_valid = 0;
++              dst_ar->num_valid_labels -= 1;
++            }
++            else {
++              strcpy(dst_ar->labels[idx].label, src_ar->labels[j].label);
++              dst_ar->labels[idx].label_valid = 1;
++              dst_ar->num_valid_labels += 1;
++            }
++          }
++          
++        }
++        //Object updates
++        for (j = 0; j < src_ar->num_object_updates;j++) {
++          idx = src_ar->objects[j].object_idx;
++          //Cancelled object
++          if (src_ar->objects[j].object_cancel_flag) {
++            dst_ar->objects[idx].object_valid = 0;
++            dst_ar->num_valid_objects -= 1;
++          }
++          //Valid object
++          else {
++            //Update the bounding box
++            if (src_ar->objects[j].bounding_box_update_flag) {
++              //Valid bounding box
++              if (!src_ar->objects[j].bounding_box_cancel_flag) {
++                //New object (or) existing one
++                if (!dst_ar->objects[idx].object_valid) {
++                  dst_ar->objects[idx].object_valid = 1;
++                  dst_ar->num_valid_objects += 1;
++                }
++                dst_ar->objects[idx].top = (guint)src_ar->objects[j].bounding_box_top;
++                dst_ar->objects[idx].left = (guint)src_ar->objects[j].bounding_box_left;
++                dst_ar->objects[idx].width = (guint)src_ar->objects[j].bounding_box_width;
++                dst_ar->objects[idx].height = (guint)src_ar->objects[j].bounding_box_height;
++                //Object label related
++                if (dst_ar->object_label_present_flag && 
++                  src_ar->objects[j].object_label_update_flag) {
++                  dst_ar->objects[idx].label_idx = src_ar->objects[j].object_label_idx;
++                }
++                //Object confidence related
++                if (dst_ar->object_conf_info_present_flag) {
++                  dst_ar->objects[idx].confidence = src_ar->objects[j].object_confidence;
++                }
++              }
++              //Cancelled bounding box
++              else {
++                  dst_ar->objects[idx].top = 0;
++                  dst_ar->objects[idx].left = 0;
++                  dst_ar->objects[idx].width = 0;
++                  dst_ar->objects[idx].height = 0;
++              }
++            }
++          }
++        }
++
++       break;
++      }
++      
+       default:
+         break;
+     }
+@@ -2890,6 +2963,25 @@ gst_h265_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
+     }
+   }
+ 
++  /* Add  annotated region sei as ROI meta to the buffer */
++  guint num_objects = h265parse->annotated_regions_info.num_valid_objects;
++  if (num_objects > 0)
++  {
++    GstVideoRegionOfInterestMeta *dmeta;
++    guint i;
++    for (i = 0; i < num_objects; i++)
++    { 
++      guint label_index = h265parse->annotated_regions_info.objects[i].label_idx;
++      dmeta = gst_buffer_add_video_region_of_interest_meta_id (parse_buffer, 
++        g_quark_from_string(h265parse->annotated_regions_info.labels[label_index].label),
++        h265parse->annotated_regions_info.objects[i].left, h265parse->annotated_regions_info.objects[i].top,
++        h265parse->annotated_regions_info.objects[i].width, h265parse->annotated_regions_info.objects[i].height);
++
++      dmeta->id = i;
++      dmeta->parent_id = i;    
++    }
++  }
++  
+   gst_video_push_user_data ((GstElement *) h265parse, &h265parse->user_data,
+       parse_buffer);
+ 
+diff --git a/gst/videoparsers/gsth265parse.h b/gst/videoparsers/gsth265parse.h
+index fb9454252..18e2b3b34 100644
+--- a/gst/videoparsers/gsth265parse.h
++++ b/gst/videoparsers/gsth265parse.h
+@@ -44,6 +44,34 @@ GType gst_h265_parse_get_type (void);
+ 
+ typedef struct _GstH265Parse GstH265Parse;
+ typedef struct _GstH265ParseClass GstH265ParseClass;
++typedef struct _GstAnnotatedObjects
++{
++  guint8 object_valid;
++  guint top;
++  guint left;
++  guint width;
++  guint height;
++  guint confidence;
++  guint label_idx;
++} GstAnnotatedObjects;
++
++typedef struct _GstAnnotatedLabels
++{
++  guint8 label_valid;
++  gint8  label[250];
++}  GstAnnotatedLabels;
++
++typedef struct _GstAnnotatedRegions
++{
++  guint8 occluded_object_flag;
++  guint8 partial_object_flag_present_flag;
++  guint8 object_label_present_flag;
++  guint8 object_conf_info_present_flag;
++  guint num_valid_objects;
++  guint num_valid_labels;
++  GstAnnotatedObjects objects[50];
++  GstAnnotatedLabels  labels[50];
++} GstAnnotatedRegions;
+ 
+ struct _GstH265Parse
+ {
+@@ -127,6 +155,8 @@ struct _GstH265Parse
+ 
+   GstVideoContentLightLevel content_light_level;
+   guint content_light_level_state;
++  
++  GstAnnotatedRegions annotated_regions_info;
+ 
+   /* For forward predicted trickmode */
+   gboolean discard_bidirectional;
+diff --git a/sys/msdk/gstmsdkenc.c b/sys/msdk/gstmsdkenc.c
+index 238530163..b0f74a734 100644
+--- a/sys/msdk/gstmsdkenc.c
++++ b/sys/msdk/gstmsdkenc.c
+@@ -254,16 +254,16 @@ gst_msdkenc_get_roi_params (GstMsdkEnc * thiz,
+ 
+   memset (curr_roi, 0, sizeof (mfxExtEncoderROI));
+   input = frame->input_buffer;
+-
++  
+   num_roi =
+       gst_buffer_get_n_meta (input, GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
+-
++  
+   if (num_roi == 0)
+     goto end;
+ 
+   curr_roi->Header.BufferId = MFX_EXTBUFF_ENCODER_ROI;
+   curr_roi->Header.BufferSz = sizeof (mfxExtEncoderROI);
+-
++  
+   for (i = 0; i < num_roi && num_valid_roi < 256; i++) {
+     GstVideoRegionOfInterestMeta *roi;
+     GstStructure *s;
+@@ -332,7 +332,7 @@ gst_msdkenc_get_roi_params (GstMsdkEnc * thiz,
+ #endif
+ 
+   curr_roi->NumROI = num_valid_roi;
+-
++  
+ end:
+   if (curr_roi->NumROI == 0 && prev_roi->NumROI == 0)
+     return FALSE;
+@@ -346,6 +346,97 @@ end:
+   return FALSE;
+ }
+ 
++void
++gst_msdkenc_get_sei_params ( GstMsdkEnc * thiz,
++    GstVideoCodecFrame * frame, mfxExtAnnotatedRegionsSEI * encoder_sei)
++{
++  GstBuffer *input;
++  guint num_roi, i, j, num_valid_roi = 0;
++  gpointer state = NULL;
++  
++  input = frame->input_buffer;
++  
++  num_roi =
++      gst_buffer_get_n_meta (input, GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
++  
++  if (num_roi == 0)
++    goto end;
++    
++  for (i = 0; i < num_roi && num_valid_roi < 256; i++) {
++   
++    GstVideoRegionOfInterestMeta *roi;
++    GstStructure *s;
++    
++    roi = (GstVideoRegionOfInterestMeta *)
++        gst_buffer_iterate_meta_filtered (input, &state,
++        GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
++
++    if (!roi)
++      continue;
++
++    /* ignore roi if overflow */
++    if ((roi->x > G_MAXINT16) || (roi->y > G_MAXINT16)
++        || (roi->w > G_MAXUINT16) || (roi->h > G_MAXUINT16)) {
++      GST_DEBUG_OBJECT (thiz, "Ignoring ROI... ROI overflow");
++      continue;
++    }
++
++    GST_LOG ("Input buffer ROI: type=%s id=%d (%d, %d) %dx%d",
++        g_quark_to_string (roi->roi_type), roi->id, roi->x, roi->y, roi->w,
++        roi->h);
++        
++    s = gst_video_region_of_interest_meta_get_param (roi, "roi/arsei");
++
++    if (s) {
++        int obj_id = 0, ret, label_found;
++        const gchar *label_val = NULL;
++
++        if (gst_structure_get_int (s, "obj_id", &obj_id)) {
++					encoder_sei->Objs[obj_id].Top = roi->y;
++					encoder_sei->Objs[obj_id].Left = roi->x;
++					encoder_sei->Objs[obj_id].Width = roi->w;
++					encoder_sei->Objs[obj_id].Height = roi->h;
++					encoder_sei->Objs[obj_id].ObjId = obj_id;
++          GST_LOG ("Use obj_id %d", obj_id);
++        } else
++          continue;
++          
++        label_val = gst_structure_get_string (s, "label");
++        if (label_val != NULL) {
++         	encoder_sei->LabelPresentFlag = 1;
++         	//Existing label (or) not
++         	ret = -1;
++         	label_found = 0;
++         	for (j =0; j < encoder_sei->NumLabels; j++) {
++        		ret = strcmp(encoder_sei->Labels[j].Label, label_val);
++        		if (ret == 0) {
++        			label_found = 1;
++        			encoder_sei->Objs[obj_id].LabelId = j;
++        			break;
++        		}
++        	}
++        	//New label
++        	if (label_found == 0) {
++        		strcpy(encoder_sei->Labels[encoder_sei->NumLabels].Label, label_val);
++        		encoder_sei->Objs[obj_id].LabelId = encoder_sei->NumLabels;
++        		encoder_sei->NumLabels++;
++        		encoder_sei->NumLabelUpdates++;        		
++        	}
++        }
++        else {
++        	encoder_sei->LabelPresentFlag = 0;
++        }
++
++      num_valid_roi++;
++    }    
++  }
++  
++  encoder_sei->NumObjs = num_valid_roi;    
++    
++end:
++	return;
++}
++
+ static gboolean
+ gst_msdkenc_init_encoder (GstMsdkEnc * thiz)
+ {
+diff --git a/sys/msdk/gstmsdkenc.h b/sys/msdk/gstmsdkenc.h
+index 95fa62723..ba33ed56e 100644
+--- a/sys/msdk/gstmsdkenc.h
++++ b/sys/msdk/gstmsdkenc.h
+@@ -136,7 +136,7 @@ struct _GstMsdkEnc
+ 
+   /* element properties */
+   gboolean hardware;
+-
++  
+   guint async_depth;
+   guint target_usage;
+   guint rate_control;
+@@ -210,6 +210,10 @@ gst_msdkenc_ensure_extended_coding_options (GstMsdkEnc * thiz);
+ gboolean
+ gst_msdkenc_get_roi_params (GstMsdkEnc * thiz,
+     GstVideoCodecFrame * frame, mfxExtEncoderROI * encoder_roi);
++
++void
++gst_msdkenc_get_sei_params ( GstMsdkEnc * thiz,
++    GstVideoCodecFrame * frame, mfxExtAnnotatedRegionsSEI * encoder_ar_sei);
+ G_END_DECLS
+ 
+ #endif /* __GST_MSDKENC_H__ */
+diff --git a/sys/msdk/gstmsdkh264enc.c b/sys/msdk/gstmsdkh264enc.c
+index 0673a3d7f..8c176b75b 100644
+--- a/sys/msdk/gstmsdkh264enc.c
++++ b/sys/msdk/gstmsdkh264enc.c
+@@ -212,6 +212,87 @@ gst_msdkh264enc_add_cc (GstMsdkH264Enc * thiz, GstVideoCodecFrame * frame)
+   gst_memory_unref (mem);
+ }
+ 
++static void
++gst_msdkh264enc_add_arsei (GstMsdkH264Enc * thiz, GstVideoCodecFrame * frame)
++{
++
++  GstMemory *mem = NULL;
++  guint num_meta = 0, i = 0;
++  mfxExtAnnotatedRegionsSEI *mar = &thiz->annotated_regions_info;
++
++  if (thiz->cc_sei_array)
++    g_array_set_size (thiz->cc_sei_array, 0);
++    
++  num_meta = mar->NumObjs;
++  
++  if (num_meta == 0)
++  	goto end;
++  
++  if (num_meta > 0) {
++    GstH264SEIMessage sei;
++    GstH264AnnotatedRegions *ar;
++
++    memset (&sei, 0, sizeof (GstH264SEIMessage));
++    sei.payloadType = GST_H264_SEI_ANNOTATED_REGIONS;
++    ar = &sei.payload.annotated_regions;
++    ar->cancel_flag = 0;
++    ar->object_label_present_flag = mar->LabelPresentFlag;
++    ar->object_conf_info_present_flag = 0;
++    ar->num_object_updates = mar->NumObjs;
++    
++    //Object updates
++    for (i = 0; i < ar->num_object_updates; i++) {
++    	ar->objects[i].object_cancel_flag = 0;
++    	ar->objects[i].bounding_box_cancel_flag = 0;
++    	ar->objects[i].bounding_box_update_flag = 1;
++      ar->objects[i].object_idx = mar->Objs[i].ObjId;
++    	ar->objects[i].bounding_box_top = mar->Objs[i].Top;
++    	ar->objects[i].bounding_box_left = mar->Objs[i].Left; 
++    	ar->objects[i].bounding_box_width = mar->Objs[i].Width; 
++    	ar->objects[i].bounding_box_height = mar->Objs[i].Height;
++    	if (ar->object_label_present_flag)
++      	ar->objects[i].object_label_idx = mar->Objs[i].LabelId;    	
++    }
++    
++    //Label updates
++    ar->num_labels = mar->NumLabels;
++    ar->num_label_updates = mar->NumLabelUpdates;
++    
++    for (i = 0; i < ar->num_label_updates; i++) {
++    	strcpy (ar->labels[i].label, mar->Labels[i].Label);
++     }
++    
++    if (!thiz->cc_sei_array) {
++      thiz->cc_sei_array =
++          g_array_new (FALSE, FALSE, sizeof (GstH264SEIMessage));
++      g_array_set_clear_func (thiz->cc_sei_array,
++          (GDestroyNotify) gst_h264_sei_clear);          
++    }
++
++    g_array_append_val (thiz->cc_sei_array, sei);
++  }
++
++  if (!thiz->cc_sei_array || !thiz->cc_sei_array->len)
++    return;
++
++  mem = gst_h264_create_sei_memory (4, thiz->cc_sei_array);
++
++  if (!mem) {
++    GST_WARNING_OBJECT (thiz, "Cannot create SEI nal unit");
++    return;
++  }
++
++  GST_DEBUG_OBJECT (thiz,
++      "Inserting %d annotated regions SEI message(s)", thiz->cc_sei_array->len);
++
++  gst_msdkh264enc_insert_sei (thiz, frame, mem);
++
++  gst_memory_unref (mem);
++  
++end:
++		return;
++}
++
+ static GstFlowReturn
+ gst_msdkh264enc_pre_push (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
+ {
+@@ -227,6 +308,11 @@ gst_msdkh264enc_pre_push (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
+     gst_msdkh264enc_insert_sei (thiz, frame, thiz->frame_packing_sei);
+   }
+ 
++	/*
++	** Insert annotated regions SEI
++	*/
++	gst_msdkh264enc_add_arsei (thiz, frame);
++	
+   gst_msdkh264enc_add_cc (thiz, frame);
+ 
+   return GST_FLOW_OK;
+@@ -669,6 +755,11 @@ static gboolean
+ gst_msdkh264enc_need_reconfig (GstMsdkEnc * encoder, GstVideoCodecFrame * frame)
+ {
+   GstMsdkH264Enc *h264enc = GST_MSDKH264ENC (encoder);
++  
++  /*
++  ** Retrieve roi information to be added as AR SEI message
++  */
++  gst_msdkenc_get_sei_params (encoder, frame, &h264enc->annotated_regions_info);
+ 
+   return gst_msdkenc_get_roi_params (encoder, frame, h264enc->roi);
+ }
+diff --git a/sys/msdk/gstmsdkh264enc.h b/sys/msdk/gstmsdkh264enc.h
+index a3a15292f..f6b5e67cd 100644
+--- a/sys/msdk/gstmsdkh264enc.h
++++ b/sys/msdk/gstmsdkh264enc.h
+@@ -58,6 +58,9 @@ struct _GstMsdkH264Enc
+   mfxExtCodingOption option;
+   /* roi[0] for current ROI and roi[1] for previous ROI */
+   mfxExtEncoderROI roi[2];
++  
++  /* Annotated regions SEI */
++  mfxExtAnnotatedRegionsSEI annotated_regions_info;  
+ 
+   gint profile;
+   gint level;
+diff --git a/sys/msdk/gstmsdkh265enc.c b/sys/msdk/gstmsdkh265enc.c
+index 66e9807bd..2f8817b6a 100644
+--- a/sys/msdk/gstmsdkh265enc.c
++++ b/sys/msdk/gstmsdkh265enc.c
+@@ -164,7 +164,7 @@ gst_msdkh265enc_add_cc (GstMsdkH265Enc * thiz, GstVideoCodecFrame * frame)
+ 
+   if (thiz->cc_sei_array)
+     g_array_set_size (thiz->cc_sei_array, 0);
+-
++    
+   while ((cc_meta =
+           (GstVideoCaptionMeta *) gst_buffer_iterate_meta_filtered (in_buf,
+               &iter, GST_VIDEO_CAPTION_META_API_TYPE))) {
+@@ -232,12 +232,100 @@ gst_msdkh265enc_add_cc (GstMsdkH265Enc * thiz, GstVideoCodecFrame * frame)
+   gst_memory_unref (mem);
+ }
+ 
++static void
++gst_msdkh265enc_add_arsei (GstMsdkH265Enc * thiz, GstVideoCodecFrame * frame)
++{
++
++  GstBuffer *in_buf = frame->input_buffer;
++  GstMemory *mem = NULL;
++  guint num_meta = 0, i = 0, label_found = 0;
++  mfxExtAnnotatedRegionsSEI *mar = &thiz->annotated_regions_info;
++
++  if (thiz->cc_sei_array)
++    g_array_set_size (thiz->cc_sei_array, 0);
++    
++  num_meta = mar->NumObjs;
++  
++  if (num_meta == 0)
++  	goto end;
++  
++  if (num_meta > 0) {
++    GstH265SEIMessage sei;
++    GstH265AnnotatedRegions *ar;
++
++    memset (&sei, 0, sizeof (GstH265SEIMessage));
++    sei.payloadType = GST_H265_SEI_ANNOTATED_REGIONS;
++    ar = &sei.payload.annotated_regions;
++    ar->cancel_flag = 0;
++    ar->object_label_present_flag = mar->LabelPresentFlag;
++    ar->object_conf_info_present_flag = 0;
++    ar->num_object_updates = mar->NumObjs;
++    
++    //Object updates
++    for (i = 0; i < ar->num_object_updates; i++) {
++    	ar->objects[i].object_cancel_flag = 0;
++    	ar->objects[i].bounding_box_cancel_flag = 0;
++    	ar->objects[i].bounding_box_update_flag = 1;
++      ar->objects[i].object_idx = mar->Objs[i].ObjId;
++    	ar->objects[i].bounding_box_top = mar->Objs[i].Top;
++    	ar->objects[i].bounding_box_left = mar->Objs[i].Left; 
++    	ar->objects[i].bounding_box_width = mar->Objs[i].Width; 
++    	ar->objects[i].bounding_box_height = mar->Objs[i].Height;
++    	if (ar->object_label_present_flag)
++      	ar->objects[i].object_label_idx = mar->Objs[i].LabelId;    	
++    }
++    
++    //Label updates
++    ar->num_labels = mar->NumLabels;
++    ar->num_label_updates = mar->NumLabelUpdates;
++    
++    for (i = 0; i < ar->num_label_updates; i++) {
++    	strcpy (ar->labels[i].label, mar->Labels[i].Label);
++    }
++    
++    if (!thiz->cc_sei_array) {
++      thiz->cc_sei_array =
++          g_array_new (FALSE, FALSE, sizeof (GstH265SEIMessage));
++      g_array_set_clear_func (thiz->cc_sei_array,
++          (GDestroyNotify) gst_h265_sei_free);
++    }
++
++    g_array_append_val (thiz->cc_sei_array, sei);
++  }
++
++  if (!thiz->cc_sei_array || !thiz->cc_sei_array->len)
++    return;
++
++  /* layer_id and temporal_id will be updated by parser later */
++  mem = gst_h265_create_sei_memory (0, 1, 4, thiz->cc_sei_array);
++
++  if (!mem) {
++    GST_WARNING_OBJECT (thiz, "Cannot create SEI nal unit");
++    return;
++  }
++
++  GST_DEBUG_OBJECT (thiz,
++      "Inserting %d annotated regions SEI message(s)", thiz->cc_sei_array->len);
++
++  gst_msdkh265enc_insert_sei (thiz, frame, mem);
++
++  gst_memory_unref (mem);
++  
++end:
++		return;
++}
++
+ static GstFlowReturn
+ gst_msdkh265enc_pre_push (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
+ {
+   GstMsdkH265Enc *thiz = GST_MSDKH265ENC (encoder);
+ 
+   gst_msdkh265enc_add_cc (thiz, frame);
++  
++	/*
++	** Insert annotated regions SEI
++	*/  
++  gst_msdkh265enc_add_arsei (thiz, frame);
+ 
+   return GST_FLOW_OK;
+ }
+@@ -672,6 +760,8 @@ static gboolean
+ gst_msdkh265enc_need_reconfig (GstMsdkEnc * encoder, GstVideoCodecFrame * frame)
+ {
+   GstMsdkH265Enc *h265enc = GST_MSDKH265ENC (encoder);
++  
++  gst_msdkenc_get_sei_params (encoder, frame, &h265enc->annotated_regions_info);
+ 
+   return gst_msdkenc_get_roi_params (encoder, frame, h265enc->roi);
+ }
+diff --git a/sys/msdk/gstmsdkh265enc.h b/sys/msdk/gstmsdkh265enc.h
+index 9cb30fc9d..ed111eef0 100644
+--- a/sys/msdk/gstmsdkh265enc.h
++++ b/sys/msdk/gstmsdkh265enc.h
+@@ -73,6 +73,9 @@ struct _GstMsdkH265Enc
+   mfxExtHEVCTiles ext_tiles;
+   /* roi[0] for current ROI and roi[1] for previous ROI */
+   mfxExtEncoderROI roi[2];
++  
++  /* Annotated regions SEI */
++  mfxExtAnnotatedRegionsSEI annotated_regions_info;  
+ 
+   GstH265Parser *parser;
+   GArray *cc_sei_array;

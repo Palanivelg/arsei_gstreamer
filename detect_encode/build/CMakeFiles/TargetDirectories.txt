@@ -1,0 +1,3 @@
+/home/itag/Software/arsei-master/detect_encode/build/CMakeFiles/edit_cache.dir
+/home/itag/Software/arsei-master/detect_encode/build/CMakeFiles/rebuild_cache.dir
+/home/itag/Software/arsei-master/detect_encode/build/CMakeFiles/detect_encode.dir

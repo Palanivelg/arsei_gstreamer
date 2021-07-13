@@ -1,0 +1,3 @@
+/home/itag/Software/arsei-master/classification_encode/build/CMakeFiles/rebuild_cache.dir
+/home/itag/Software/arsei-master/classification_encode/build/CMakeFiles/edit_cache.dir
+/home/itag/Software/arsei-master/classification_encode/build/CMakeFiles/classification_encode.dir
