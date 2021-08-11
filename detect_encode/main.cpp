@@ -20,6 +20,12 @@ gchar const *comp_scheme = NULL;
 
 #define UNUSED(x) (void)(x)
 
+#define ENABLE_ARSEI_INSERTION 1
+
+#if ENABLE_ARSEI_INSERTION
+  #define ARSEI_INSERT_LABEL 0
+#endif
+
 std::vector<std::string> SplitString(const std::string input, char delimiter = ':') {
     std::vector<std::string> tokens;
     std::string token;
@@ -111,7 +117,7 @@ static GOptionEntry opt_entries[] = {
     {"no-display", 'n', 0, G_OPTION_ARG_NONE, &no_display, "Run without display", NULL},
     GOptionEntry()};
 
-
+#if ENABLE_ARSEI_INSERTION
 // This structure will be used to pass user data (such as memory type) to the callback function.
 // Printing classification results on a frame
 // Gets called to notify about the current blocking type
@@ -159,9 +165,12 @@ static GstPadProbeReturn pad_probe_callback(GstPad *pad, GstPadProbeInfo *info, 
         object_id = roi.object_id();
         //std::cout<<object_id<<"\t"<<rect.x<<"\t"<<rect.y<<std::endl;
         if (rmeta == NULL)
-        	std::cout<<"Null pointer"<<std::endl;        
+          std::cout<<"Null pointer"<<std::endl;
+#if ARSEI_INSERT_LABEL
         s = gst_structure_new ("roi/arsei", "obj_id", G_TYPE_INT, roi.object_id()-1, "label", G_TYPE_STRING, "face", NULL);
-        //s = gst_structure_new ("roi/arsei", "obj_id", G_TYPE_INT, roi.object_id()-1, NULL);
+#else
+        s = gst_structure_new ("roi/arsei", "obj_id", G_TYPE_INT, roi.object_id()-1, NULL);
+#endif
         gst_video_region_of_interest_meta_add_param (rmeta, s);
     }
 
@@ -173,6 +182,7 @@ static GstPadProbeReturn pad_probe_callback(GstPad *pad, GstPadProbeInfo *info, 
 
     return GST_PAD_PROBE_OK;
 }
+#endif
 
 // Sample recieves video with faces as an argument
 // If video file is not passed as an argument obviously, an attempt will be made
@@ -238,47 +248,59 @@ int main(int argc, char *argv[]) {
     gchar const *preprocess_pipeline = "rawvideoparse format=i420 width=768 height=432 ! videoconvert ! video/x-raw,format=NV12";
     gchar const *enc_str;
     gchar const *sink;
-    
+
+#if ENABLE_ARSEI_INSERTION
     if (h264_compression_scheme == FALSE) {
-    	enc_str = "msdkh265enc name=msdkh265enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h265,profile=main ! h265parse";
-			sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false"
-                                   : "filesink location=output/msdk_encoded.h265";    	
+      enc_str = "msdkh265enc name=msdkh265enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h265,profile=main ! h265parse";
+      sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_with_sei.h265";
     }
     else {
-			enc_str = "msdkh264enc name=msdkh264enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h264,profile=main ! h264parse";
-			sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false"
-                                   : "filesink location=output/msdk_encoded.h264";                                   			
+      enc_str = "msdkh264enc name=msdkh264enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h264,profile=main ! h264parse";
+      sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_with_sei.h264";
     }
+#else
+    if (h264_compression_scheme == FALSE) {
+      enc_str = "msdkh265enc name=msdkh265enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h265,profile=main ! h265parse";
+      sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_without_sei.h265";
+    }
+    else {
+      enc_str = "msdkh264enc name=msdkh264enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h264,profile=main ! h264parse";
+      sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_without_sei.h264";
+    }
+#endif
 
     // Build the pipeline
     auto launch_str = g_strdup_printf("%s=%s num_buffers=300 ! %s !"
-    																	" gvadetect model=%s device=%s batch-size=%d ! gvatrack !"
+                                      " gvadetect model=%s device=%s batch-size=%d ! gvatrack !"
                                       " %s ! %s",
                                       video_source, input_file, preprocess_pipeline, detection_model, device, batch_size, enc_str, sink);
 
     g_print("PIPELINE: %s \n", launch_str);
     GstElement *pipeline = gst_parse_launch(launch_str, NULL);
     g_free(launch_str);
-    
-    if (h264_compression_scheme == TRUE) {    
-		  // set probe callback
-		  auto msdkh264enc = gst_bin_get_by_name(GST_BIN(pipeline), "msdkh264enc");
-		  auto pad = gst_element_get_static_pad(msdkh264enc, "sink");
-		  // The provided callback 'pad_probe_callback' is called for every state that
-		  // matches GST_PAD_PROBE_TYPE_BUFFER to probe buffers
-		  gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, pad_probe_callback, NULL, NULL);
-		  gst_object_unref(pad);
+
+#if ENABLE_ARSEI_INSERTION
+    if (h264_compression_scheme == TRUE) {
+      // set probe callback
+      auto msdkh264enc = gst_bin_get_by_name(GST_BIN(pipeline), "msdkh264enc");
+      auto pad = gst_element_get_static_pad(msdkh264enc, "sink");
+      // The provided callback 'pad_probe_callback' is called for every state that
+      // matches GST_PAD_PROBE_TYPE_BUFFER to probe buffers
+      gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, pad_probe_callback, NULL, NULL);
+      gst_object_unref(pad);
     }
     
-    else {    
-		  // set probe callback
-		  auto msdkh265enc = gst_bin_get_by_name(GST_BIN(pipeline), "msdkh265enc");
-		  auto pad = gst_element_get_static_pad(msdkh265enc, "sink");
-		  // The provided callback 'pad_probe_callback' is called for every state that
-		  // matches GST_PAD_PROBE_TYPE_BUFFER to probe buffers
-		  gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, pad_probe_callback, NULL, NULL);
-		  gst_object_unref(pad);
+    else {
+      // set probe callback
+      auto msdkh265enc = gst_bin_get_by_name(GST_BIN(pipeline), "msdkh265enc");
+      auto pad = gst_element_get_static_pad(msdkh265enc, "sink");
+      // The provided callback 'pad_probe_callback' is called for every state that
+      // matches GST_PAD_PROBE_TYPE_BUFFER to probe buffers
+      gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, pad_probe_callback, NULL, NULL);
+      gst_object_unref(pad);
     }
+#endif
+
     // Start playing
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
 

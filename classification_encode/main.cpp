@@ -17,6 +17,12 @@
 
 #define MAX_OBJECTS 50
 
+#define ENABLE_ARSEI_INSERTION 0
+
+#if ENABLE_ARSEI_INSERTION
+  #define ARSEI_INSERT_LABEL 0
+#endif
+
 using namespace std;
 
 gchar const *icomp_scheme = NULL;
@@ -93,14 +99,8 @@ const std::string env_models_path =
 
 const std::vector<std::string> default_detection_model_names = {"face-detection-adas-0001.xml"};
 
-#if 0
-const std::vector<std::string> default_classification_model_names = {
-    "facial-landmarks-35-adas-0002.xml", "age-gender-recognition-retail-0013.xml",
-    "emotions-recognition-retail-0003.xml", "head-pose-estimation-adas-0001.xml"};
-#else
 const std::vector<std::string> default_classification_model_names = {
     "age-gender-recognition-retail-0013.xml"};
-#endif
 
 gchar const *detection_model = NULL;
 gchar const *classification_models = NULL;
@@ -258,34 +258,19 @@ static GstPadProbeReturn pad_probe_callback(GstPad *pad, GstPadProbeInfo *info, 
             if (layer_name == "prob") {
                 label += (data[1] > 0.5) ? "_M" : "_F";
             }
-            if (layer_name == "age_conv3") {
-                label += to_string((int)(data[0] * 100));
-            }
-            if (layer_name == "prob_emotion") {
-                static const vector<string> emotionsDesc = {"neutral", "happy", "sad", "surprise", "anger"};
-                int index = max_element(begin(data), end(data)) - begin(data);
-                label += " " + emotionsDesc[index];
-            }
-            // Get info for drawing axes
-            if (layer_name.find("angle_r") != string::npos) {
-                head_angle_r = data[0];
-            }
-            if (layer_name.find("angle_p") != string::npos) {
-                head_angle_p = data[0];
-            }
-            if (layer_name.find("angle_y") != string::npos) {
-                head_angle_y = data[0];
-            }
         }
         
         rmeta = roi._meta();
         if (rmeta == NULL)
         	std::cout<<"Null pointer"<<std::endl;
-           
-        //G_TYPE_STRING final_str =  label.c_str();
+#if ENABLE_ARSEI_INSERTION
+#if ARSEI_INSERT_LABEL
         s = gst_structure_new ("roi/arsei", "obj_id", G_TYPE_INT, k, "label", G_TYPE_STRING, label.c_str(), NULL);
-        //s = gst_structure_new ("roi/arsei", "obj_id", G_TYPE_INT, roi.object_id()-1, NULL);
+#else
+        s = gst_structure_new ("roi/arsei", "obj_id", G_TYPE_INT, roi.object_id()-1, NULL);
+#endif
         gst_video_region_of_interest_meta_add_param (rmeta, s);
+#endif
         k++;        
 
     }
@@ -388,22 +373,31 @@ int main(int argc, char *argv[]) {
     }
 
 		if (h264_icompression_scheme == TRUE) {
-    	preprocess_pipeline = "h264parse ! msdkh264dec ! videoconvert name=vconv n-threads=4 ! videoscale n-threads=4 ";  	
+    	preprocess_pipeline = "h264parse ! msdkh264dec ! videoconvert name=vconv n-threads=4 ! videoscale n-threads=4 ";
     }
     else {
-    	preprocess_pipeline = "h265parse ! msdkh265dec ! videoconvert name=vconv n-threads=4 ! videoscale n-threads=4 ";  	
+    	preprocess_pipeline = "h265parse ! msdkh265dec ! videoconvert name=vconv n-threads=4 ! videoscale n-threads=4 ";
     }
-    
+
+#if ENABLE_ARSEI_INSERTION
 		if (h264_ocompression_scheme == TRUE) {
     	enc_str = "msdkh264enc name=msdkh264enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h264,profile=main ! h264parse";
-    	sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false"
-                                   : "filesink location=output/msdk_encoded_classification.h264";    	
+    	sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_classification_with_sei.h264";
     }
 		else {
     	enc_str = "msdkh265enc name=msdkh265enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h265,profile=main ! h265parse";
-    	sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false"
-                                   : "filesink location=output/msdk_encoded_classification.h265";    	
-    }        
+    	sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_classification_with_sei.h265";
+    }
+#else
+		if (h264_ocompression_scheme == TRUE) {
+    	enc_str = "msdkh264enc name=msdkh264enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h264,profile=main ! h264parse";
+    	sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_classification_without_sei.h264";
+    }
+		else {
+    	enc_str = "msdkh265enc name=msdkh265enc rate-control=cqp qpi=28 qpp=28 gop-size=30 num-slices=1 ref-frames=1 b-frames=0 target-usage=4 hardware=true ! video/x-h265,profile=main ! h265parse";
+    	sink = no_display ? "identity signal-handoffs=false ! fakesink sync=false" : "filesink location=output/msdk_encoded_classification_without_sei.h265";
+    }
+#endif
 
     gchar const *vc_str = "videoconvert n-threads=4";
     auto launch_str = g_strdup_printf("%s=%s ! %s ! capsfilter caps=\"%s\" !"

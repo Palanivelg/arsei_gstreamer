@@ -1,32 +1,27 @@
 # Draw Face Attributes C++ Sample
 
-This sample demonstrates how construct and control GStreamer pipeline from C++ application, and how to access metadata attached by inference elements to image buffer.
+This sample demonstrates the extraction of the analytics meta data from the video stream, perform classification on the meta data and re-encodes the stream with enhanced meta data in the form of ARSEI message.
 
 ## How It Works
-The sample utilizes GStreamer function `gst_parse_launch` to construct the pipeline from string representation. Then callback function is set on source pin of `gvawatermark` element in the pipeline.
+The sample utilizes GStreamer function `gst_parse_launch` to construct the pipeline from string representation. Then callback function is set on source pin of `msdkh264enc\msdkh265enc` element in the pipeline.
 
-The callback is invoked on every frame, it loops through inference metadata attached to the frame, converts raw tensor data into attributes and text labels (conversion depends on the model), and visualizes labels around detected objects.
-
-Note that this sample doesn't contain .json files with post-processing rules as post-processing of classification results performed by sample itself (inside callback function), not by `gvaclassify` element.
+The callback is invoked on every frame, it loops through inference metadata attached to the frame, performs classification (age & gender) and adds labels and to the  inference meta data. 
 
 ## Models
 
 The sample uses by default the following pre-trained models from OpenVINO™ Toolkit [Open Model Zoo](https://github.com/openvinotoolkit/open_model_zoo)
-*   __face-detection-adas-0001__ is primary detection network for finding faces
 *   __age-gender-recognition-retail-0013__ age and gender estimation on detected faces
-*   __emotions-recognition-retail-0003__ emotion estimation on detected faces
-*   __facial-landmarks-35-adas-0002-0009__ generates facial landmark points
-*   __head-pose-estimation-adas-0001__ estimates head pose
 
-> **NOTE**: Before running samples (including this one), run script `download_models.sh` once (the script located in `samples` top folder) to download all models required for this and other samples.
+> **NOTE1**: Before running samples (including this one), run script `download_models.sh` once (the script located in `samples` top folder) to download all models required for this and other samples.
+> **NOTE 2**: The gstreamer library needs to be re-built with the patch in the repository.
 
 ## Running
 
 ```sh
-./build_and_run.sh [INPUT_VIDEO]
+./build_and_run.sh [INPUT_VIDEO] input_compression_scheme(h264/h265) output_compression_scheme(h264/h265)
 ```
 
-The script `build_and_run.sh` compiles the C++ sample into subfolder under `$HOME/intel/dl_streamer`, then runs the executable file.
+The script `build_and_run.sh` compiles the C++ sample into subfolder under `$PWD/build`, then runs the executable file.
 
 If no input parameters specified, the sample by default streams video example from HTTPS link (utilizing `urisourcebin` element) so requires internet conection.
 The command-line parameter INPUT_VIDEO allows to change input video and supports
@@ -38,7 +33,5 @@ The command-line parameter INPUT_VIDEO allows to change input video and supports
 
 The sample
 * prints GSreamer pipeline string as passed to function `gst_parse_launch`
-* starts the pipeline and visualizes video with bouding boxes around detected faces, facial landmarks points, head pose, and text with classification results (age/gender, emotion) for each detected face
+* starts the pipeline and creates a compressed h.264/h.265 bitstream with analytics data in the form of ARSEI
 
-## See also
-* [DL Streamer samples](../../README.md)

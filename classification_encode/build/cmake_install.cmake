@@ -1,4 +1,4 @@
-# Install script for directory: /home/itag/Software/arsei-master/classification_encode
+# Install script for directory: /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -45,5 +45,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/itag/Software/arsei-master/classification_encode/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

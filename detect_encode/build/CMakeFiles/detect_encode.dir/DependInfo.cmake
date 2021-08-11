@@ -4,13 +4,13 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/home/itag/Software/arsei-master/detect_encode/main.cpp" "/home/itag/Software/arsei-master/detect_encode/build/CMakeFiles/detect_encode.dir/main.cpp.o"
+  "/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode/main.cpp" "/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode/build/CMakeFiles/detect_encode.dir/main.cpp.o"
   )
 set(CMAKE_CXX_COMPILER_ID "GNU")
 
 # The include file search paths:
 set(CMAKE_CXX_TARGET_INCLUDE_PATH
-  "/usr/include/gstreamer-1.0"
+  "/opt/media/include/gstreamer-1.0"
   "/usr/include/orc-0.4"
   "/usr/include/glib-2.0"
   "/usr/lib/x86_64-linux-gnu/glib-2.0/include"

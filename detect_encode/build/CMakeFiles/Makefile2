@@ -44,10 +44,10 @@ RM = /usr/bin/cmake -E remove -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/itag/Software/arsei-master/detect_encode
+CMAKE_SOURCE_DIR = /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/itag/Software/arsei-master/detect_encode/build
+CMAKE_BINARY_DIR = /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode/build
 
 #=============================================================================
 # Directory level rules for the build root directory
@@ -74,14 +74,14 @@ clean: CMakeFiles/detect_encode.dir/clean
 CMakeFiles/detect_encode.dir/all:
 	$(MAKE) -f CMakeFiles/detect_encode.dir/build.make CMakeFiles/detect_encode.dir/depend
 	$(MAKE) -f CMakeFiles/detect_encode.dir/build.make CMakeFiles/detect_encode.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/itag/Software/arsei-master/detect_encode/build/CMakeFiles --progress-num=1,2 "Built target detect_encode"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode/build/CMakeFiles --progress-num=1,2 "Built target detect_encode"
 .PHONY : CMakeFiles/detect_encode.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/detect_encode.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/itag/Software/arsei-master/detect_encode/build/CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode/build/CMakeFiles 2
 	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/detect_encode.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/itag/Software/arsei-master/detect_encode/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/detect_encode/build/CMakeFiles 0
 .PHONY : CMakeFiles/detect_encode.dir/rule
 
 # Convenience name for target.

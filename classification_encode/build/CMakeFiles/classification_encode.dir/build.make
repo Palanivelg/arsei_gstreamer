@@ -43,10 +43,10 @@ RM = /usr/bin/cmake -E remove -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/itag/Software/arsei-master/classification_encode
+CMAKE_SOURCE_DIR = /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/itag/Software/arsei-master/classification_encode/build
+CMAKE_BINARY_DIR = /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/classification_encode.dir/depend.make
@@ -59,29 +59,29 @@ include CMakeFiles/classification_encode.dir/flags.make
 
 CMakeFiles/classification_encode.dir/draw_axes.cpp.o: CMakeFiles/classification_encode.dir/flags.make
 CMakeFiles/classification_encode.dir/draw_axes.cpp.o: ../draw_axes.cpp
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/itag/Software/arsei-master/classification_encode/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/classification_encode.dir/draw_axes.cpp.o"
-	/usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/classification_encode.dir/draw_axes.cpp.o -c /home/itag/Software/arsei-master/classification_encode/draw_axes.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/classification_encode.dir/draw_axes.cpp.o"
+	/usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/classification_encode.dir/draw_axes.cpp.o -c /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/draw_axes.cpp
 
 CMakeFiles/classification_encode.dir/draw_axes.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/classification_encode.dir/draw_axes.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/itag/Software/arsei-master/classification_encode/draw_axes.cpp > CMakeFiles/classification_encode.dir/draw_axes.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/draw_axes.cpp > CMakeFiles/classification_encode.dir/draw_axes.cpp.i
 
 CMakeFiles/classification_encode.dir/draw_axes.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/classification_encode.dir/draw_axes.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/itag/Software/arsei-master/classification_encode/draw_axes.cpp -o CMakeFiles/classification_encode.dir/draw_axes.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/draw_axes.cpp -o CMakeFiles/classification_encode.dir/draw_axes.cpp.s
 
 CMakeFiles/classification_encode.dir/main.cpp.o: CMakeFiles/classification_encode.dir/flags.make
 CMakeFiles/classification_encode.dir/main.cpp.o: ../main.cpp
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/itag/Software/arsei-master/classification_encode/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/classification_encode.dir/main.cpp.o"
-	/usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/classification_encode.dir/main.cpp.o -c /home/itag/Software/arsei-master/classification_encode/main.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/classification_encode.dir/main.cpp.o"
+	/usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/classification_encode.dir/main.cpp.o -c /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/main.cpp
 
 CMakeFiles/classification_encode.dir/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/classification_encode.dir/main.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/itag/Software/arsei-master/classification_encode/main.cpp > CMakeFiles/classification_encode.dir/main.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/main.cpp > CMakeFiles/classification_encode.dir/main.cpp.i
 
 CMakeFiles/classification_encode.dir/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/classification_encode.dir/main.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/itag/Software/arsei-master/classification_encode/main.cpp -o CMakeFiles/classification_encode.dir/main.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/main.cpp -o CMakeFiles/classification_encode.dir/main.cpp.s
 
 # Object files for target classification_encode
 classification_encode_OBJECTS = \
@@ -97,7 +97,7 @@ classification_encode: CMakeFiles/classification_encode.dir/build.make
 classification_encode: /opt/intel/openvino_2021/opencv/lib/libopencv_imgproc.so.4.5.1
 classification_encode: /opt/intel/openvino_2021/opencv/lib/libopencv_core.so.4.5.1
 classification_encode: CMakeFiles/classification_encode.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/itag/Software/arsei-master/classification_encode/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable classification_encode"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable classification_encode"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/classification_encode.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -110,6 +110,6 @@ CMakeFiles/classification_encode.dir/clean:
 .PHONY : CMakeFiles/classification_encode.dir/clean
 
 CMakeFiles/classification_encode.dir/depend:
-	cd /home/itag/Software/arsei-master/classification_encode/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/itag/Software/arsei-master/classification_encode /home/itag/Software/arsei-master/classification_encode /home/itag/Software/arsei-master/classification_encode/build /home/itag/Software/arsei-master/classification_encode/build /home/itag/Software/arsei-master/classification_encode/build/CMakeFiles/classification_encode.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build /home/darsh/Palanivel/ar_sei_git/arsei_gstreamer/classification_encode/build/CMakeFiles/classification_encode.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/classification_encode.dir/depend
 
